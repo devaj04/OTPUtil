@@ -81,7 +81,7 @@ spring.mail.properties.mail.smtp.auth=true
 spring.mail.properties.mail.smtp.starttls.enable=true
 spring.mail.properties.mail.smtp.starttls.required=true
 
-# OTP
+# OTP Settings
 otp.encryption.secret=Trigyn@OTPSecretKey#2024$Secure32B  # 32-byte AES-256 key
 otp.valid.purposes=signupOtp,resetPasswordWithOtp,otpContactUpdateTemplate,deleteUserAccountTemplate,1107175041055648550
 otp.default.purpose=signupOtp  # Default when purpose not provided
@@ -90,17 +90,30 @@ otp.max.attempts=3
 
 # Rate Limiting (per key, per hour)
 otp.ratelimit.max-per-hour=3
-otp.ratelimit.window-seconds=3600
+otp.ratelimit.window-seconds=3600  # TTL window in seconds (1 hour)
+# When this window expires, attemptedCount resets to 0 automatically
 
 # Notification Settings
 notification.email.from=your-email@gmail.com
 
-# CDAC SMS Gateway (see SMS Integration section below for details)
-cdac.sms.base-url=https://msdgweb.mgov.gov.in/esms/sendsmsrequestDLT
-cdac.sms.sender-id=YOURSENDERID
-cdac.sms.username=your-gateway-username
-cdac.sms.password=your-gateway-password
-cdac.sms.dept-secure-key=your-uuid-key
+# CDAC SMS Gateway
+sms.base-url=https://msdgweb.mgov.gov.in/esms/sendsmsrequestDLT
+sms.sender-id=YOURSENDERID
+sms.username=your-gateway-username
+sms.password=your-gateway-password
+sms.dept-secure-key=your-uuid-key
+
+# DLT Template IDs
+sms.dlt-templates.signupOtp=1007XXXXXXXXX2
+sms.dlt-templates.resetPasswordWithOtp=1007XXXXXXXXXX
+sms.dlt-templates.otpContactUpdateTemplate=1007XXXXXXXXXY
+sms.dlt-templates.deleteUserAccountPhone=1007XXXXXXXXX0
+
+# Logging Configuration (Optional - for debugging)
+logging.level.root=INFO
+logging.level.com.trigyn.OTPUtil=WARN
+logging.level.com.trigyn.OTPUtil.service.impl.OtpServiceImpl=WARN
+logging.pattern.console=%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n
 ```
 
 **Note on Gmail SMTP:**
@@ -277,7 +290,30 @@ Both requests automatically use the configured signup purpose from `otp.default.
 
 ---
 
-## Project Structure
+## Recent Improvements (v0.0.1)
+
+### ✅ Enhanced Rate Limit Management
+- Automatic reset of `attemptedCount` to 0 when TTL window expires
+- Improved logging with detailed timestamp and elapsed time information
+- Seamless user experience without deletion/recreation overhead
+
+### ✅ Enhanced SMS Gateway Response Parsing
+- Comprehensive error detection including: `whitelisted`, `not authorized`, `blocked`, `suspended`, etc.
+- Fail-secure approach: ambiguous responses treated as failures
+- Accurate `otpSent` status reflecting actual delivery success/failure
+
+### ✅ Improved Logging & Debugging
+- Single-line formatted logs for better readability
+- Emoji indicators (📤, 📊, 🔄, ❌, ⚠️) for quick visual scanning
+- Detailed rate limit check logs showing elapsed time vs TTL window
+- SMS delivery status logs with gateway response information
+
+### ✅ Cleaned Dependencies
+- Removed duplicate Lombok dependency
+- Optimized pom.xml with only actively-used dependencies
+- Proper Maven configuration best practices
+
+---
 
 ```
 src/main/java/com/trigyn/OTPUtil/
@@ -334,8 +370,20 @@ src/main/java/com/trigyn/OTPUtil/
 The OTP service enforces **per-key rate limiting**:
 
 - **Max OTP generations per hour:** 3 per unique key (email/phone)
-- **Window:** 1 hour (3600 seconds)
-- **Auto-cleanup:** Rate limit records auto-expire after 1 hour via Cassandra TTL
+- **Window:** 1 hour (3600 seconds) - configurable via `otp.ratelimit.window-seconds`
+- **TTL Reset:** When rate limit window expires, the `attemptedCount` is **automatically reset to 0**
+- **Auto-cleanup:** Rate limit records auto-expire after the window via Cassandra TTL
+
+**Rate Limit Reset Feature:**
+When the TTL window expires for a rate-limited key, the counter is intelligently reset on the next OTP generation request:
+```
+Time 0s:       User generates OTP #1 (count=1)
+Time 1800s:    User generates OTP #2 (count=2)
+Time 3600s+:   TTL expires, user generates OTP #3
+               → System detects TTL expiration
+               → Counter reset to 0
+               → OTP #3 accepted (count=1 after increment)
+```
 
 **Error response when limit exceeded:**
 ```json
@@ -348,9 +396,104 @@ The OTP service enforces **per-key rate limiting**:
 }
 ```
 
+**Error response when delivery fails:**
+```json
+{
+  "response": {
+    "otpSent": "no",
+    "referenceId": "550e8400-e29b-41d4-a716-446655440000",
+    "generatedTs": 1714200000000,
+    "validFor": 60
+  },
+  "status": {
+    "code": "OTP_206",
+    "message": "OTP generated but failed to send notification. Please retry."
+  }
+}
+```
+
 ---
 
-## Timezone Support
+## Enhanced Logging & Debugging
+
+The service provides comprehensive single-line formatted logs for easy monitoring and debugging.
+
+### Rate Limit Logging
+
+```
+⏱️  RATE LIMIT CHECK - key=user@example.com | timestamp=2026-04-28T14:40:00 | current=2026-04-28T14:45:05 | elapsed=305s | window=300s | count=3/3 | expired=✅ YES
+
+🔄 RATE LIMIT RESET TRIGGERED! - key=user@example.com | elapsed=305s | window=300s | cassandra_updated | redis_cleared
+
+📊 RATE LIMIT UPDATED - key=user@example.com | oldCount=0 | newCount=1/3
+
+❌ RATE LIMIT EXCEEDED - key=user@example.com | attempted=3 | max=3
+```
+
+### SMS Delivery Logging
+
+```
+📤 SMS SENDING - mobile=919876543210 | purpose=signupOtp | template=1107175041055648550
+
+📊 SMS ACCEPTED - mobile=919876543210 | gateway_response='Success'
+
+📊 SMS DELIVERY FAILED - mobile=919876543210 | gateway_response='IP not Whitelisted'
+
+❌ SMS ERROR - mobile=919876543210 | type=SSL/Crypto | error=TLS error
+```
+
+### Enable Debug Logging
+
+Add to `application.properties`:
+```properties
+logging.level.com.trigyn.OTPUtil.service.impl.OtpServiceImpl=WARN
+logging.level.com.trigyn.OTPUtil.sms.CDACGatewaySmsProvider=WARN
+```
+
+The logs use emoji indicators for quick visual scanning:
+- 📤 SMS/OTP sending
+- 📊 Status updates and checks
+- 🔄 Reset/reload operations
+- ❌ Errors and failures
+- ⚠️  Warnings
+
+---
+
+## SMS Gateway Response Handling
+
+The service intelligently parses CDAC gateway responses to accurately report delivery status:
+
+### Success Indicators (returns `otpSent: "yes"`):
+- `success`, `accepted`, `submitted`
+- `"1"` or `<status>1</status>`
+- `ok`
+
+### Failure Indicators (returns `otpSent: "no"`):
+- `error`, `failed`, `invalid`
+- `"0"` or `<status>0</status>`
+- `whitelisted` (IP not whitelisted)
+- `not authorized`, `authentication failed`
+- `blocked`, `suspended`, `invalid template`
+
+### Example Gateway Error Handling:
+
+**When gateway returns:** `"IP not Whitelisted"`
+```json
+{
+  "response": {
+    "otpSent": "no",               
+    "referenceId": "...",
+    "generatedTs": "...",
+    "validFor": 60
+  },
+  "status": {
+    "code": "OTP_206",
+    "message": "OTP generated but failed to send notification. Please retry."
+  }
+}
+```
+
+---
 
 All timestamps are stored and returned in **Indian Standard Time (IST, UTC+5:30)**:
 
@@ -426,9 +569,13 @@ Each SMS request is signed with two hashes:
 - ⚠️ Notification failures (email/SMS) are **logged but do NOT fail the request**
 - The response field `otpSent` indicates the **actual delivery status**:
   - `"yes"` = notification was successfully sent
-  - `"no"` = notification delivery failed (SMTP error, SMS provider error, etc.)
+  - `"no"` = notification delivery failed (SMTP error, SMS provider error, IP not whitelisted, etc.)
 
-**Example failure response:**
+**The service correctly differentiates between:**
+- ✅ OTP_200: OTP generated AND notification sent successfully
+- ⚠️ OTP_206: OTP generated BUT notification delivery failed
+
+**Example: Gateway IP Not Whitelisted**
 ```json
 {
   "response": {
@@ -448,6 +595,13 @@ Each SMS request is signed with two hashes:
 1. Check `otpSent` field in the response
 2. If `"no"` → retry `/generate` again, or use alternate delivery method
 3. OTP remains valid in the system for the full TTL period
+4. Check logs with gateway response details for debugging
+
+**Common SMS Gateway Failures (Logged with Details):**
+- `IP not Whitelisted` → Configure IP in gateway
+- `Authentication failed` → Verify credentials
+- `Invalid template` → Check DLT template registration
+- `Blocked/Suspended` → Check account status
 
 ---
 
@@ -461,3 +615,10 @@ Each SMS request is signed with two hashes:
 - Rate limit records auto-expire after 1 hour via Cassandra TTL – no background cleanup job needed.
 - SMTP connection is intelligently recycled to prevent stale connection issues.
 
+### Monitoring & Debugging
+
+- Enable debug logging in `application.properties` to monitor rate limiting and SMS delivery
+- Check logs for emoji-prefixed messages: 📤 (sending), 📊 (status), 🔄 (reset), ❌ (error), ⚠️ (warning)
+- Each operation logs key details: elapsed time, window size, counts, and gateway responses
+- Failed deliveries are logged with detailed error information for troubleshooting
+- Fail-secure approach: ambiguous gateway responses are treated as failures to prevent incorrect success reporting
