@@ -1,6 +1,5 @@
 package com.trigyn.OTPUtil.sms;
 
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpResponse;
@@ -24,7 +23,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * CDAC National Informatics Centre (NIC) SMS Gateway provider.
@@ -45,11 +43,6 @@ import java.util.Map;
 @Slf4j
 @Component
 public class CDACGatewaySmsProvider {
-
-    // -----------------------------------------------------------------------
-    //  Spring-injected configuration
-    //  Environment-variable overrides are checked inside @PostConstruct init().
-    // -----------------------------------------------------------------------
 
     @Value("${sms.base-url}")
     private String baseUrl;
@@ -78,68 +71,6 @@ public class CDACGatewaySmsProvider {
     @Value("${sms.dlt-templates.deleteUserAccountPhone}")
     private String deleteUserAccountPhone;
 
-
-    /**
-     * Purpose → DLT Template-ID map.
-     * Populated from {@code cdac.sms.dlt-templates.*} in application.properties.
-     * Example:
-     * <pre>
-     * cdac.sms.dlt-templates.signupOtp=1007XXXXXXXX
-     * cdac.sms.dlt-templates.resetPasswordWithOtp=1007XXXXXXXY
-     * </pre>
-     */
-    @Value("#{${cdac.sms.dlt-templates:{}}}")
-    private Map<String, String> dltTemplates;
-
-    // -----------------------------------------------------------------------
-    //  Lifecycle
-    // -----------------------------------------------------------------------
-
-    @PostConstruct
-    public void init() {
-        // Configuration is loaded from application.properties via @Value annotations above
-        boolean valid = validateSettings();
-        log.info("CDACGatewaySmsProvider initialised – configuration valid: {}", valid);
-        log.info("CDACGatewaySmsProvider – base URL: {}", baseUrl);
-        log.info("CDACGatewaySmsProvider – sender ID: {}", senderId);
-        log.info("CDACGatewaySmsProvider – username: {}", userName);
-        log.info("CDACGatewaySmsProvider – DLT templates configured: {}", 
-                dltTemplates != null ? dltTemplates.size() : 0);
-        if (dltTemplates != null) {
-            dltTemplates.forEach((purpose, templateId) -> 
-                    log.info("  → {} = {}", purpose, templateId));
-        }
-        if (!valid) {
-            log.warn("CDACGatewaySmsProvider: one or more required settings are missing. "
-                    + "SMS delivery will fail until configuration is corrected.");
-        }
-    }
-
-    private boolean validateSettings() {
-        boolean credsValid = StringUtils.isNotBlank(senderId)
-                && StringUtils.isNotBlank(userName)
-                && StringUtils.isNotBlank(password)
-                && StringUtils.isNotBlank(deptSecureKey);
-        
-        // Check if DLT templates are configured with actual values (not placeholders)
-        boolean dltValid = dltTemplates != null && !dltTemplates.isEmpty();
-        if (dltValid) {
-            for (String templateId : dltTemplates.values()) {
-                if (templateId.contains("your-") || templateId.contains("XXXXXXXX")) {
-                    log.warn("CDACGatewaySmsProvider – DLT template with placeholder value detected: {}. "
-                            + "Replace with actual template ID from telecom operator.", templateId);
-                    dltValid = false;
-                }
-            }
-        }
-        
-        return credsValid && dltValid;
-    }
-
-    // -----------------------------------------------------------------------
-    //  Public send API
-    // -----------------------------------------------------------------------
-
     /**
      * Sends a text message to a single mobile number.
      *
@@ -152,29 +83,12 @@ public class CDACGatewaySmsProvider {
         return sendSms(mobileNumber, smsText, purpose);
     }
 
-    /**
-     * Sends a text message to multiple mobile numbers sequentially.
-     *
-     * @param mobileNumbers list of phone numbers
-     * @param smsText       plain-text message body
-     * @param purpose       OTP purpose
-     * @return {@code true} if every send attempt returned success
-     */
-    public boolean send(List<String> mobileNumbers, String smsText, String purpose) {
-        return mobileNumbers.stream()
-                .allMatch(phone -> sendSms(phone, smsText, purpose));
-    }
-
-    // -----------------------------------------------------------------------
-    //  Core send logic  (adapted from CDACGatewaySmsProvider v2)
-    // -----------------------------------------------------------------------
-
     @SuppressWarnings({"deprecation"})
     private boolean sendSms(String mobileNumber, String smsText, String purpose) {
         String responseString = "";
         try {
             String dltTemplateId = resolveDltTemplateId(purpose);
-            log.info("CDACGatewaySmsProvider – dltTemplateId='{}' purpose='{}' smsText='{}' ", dltTemplateId, purpose, smsText);
+            log.warn("📤 SMS SENDING - mobile={} | purpose={} | template={} | smsText={}", mobileNumber, purpose, dltTemplateId, smsText);
 
             // TLS 1.2 context
             SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
@@ -201,7 +115,6 @@ public class CDACGatewaySmsProvider {
             params.add(new BasicNameValuePair("templateid",   dltTemplateId));
 
             post.setEntity(new UrlEncodedFormEntity(params));
-            log.info("CDACGatewaySmsProvider – sending to mobile={}", mobileNumber);
 
             HttpResponse response = client.execute(post);
 
@@ -216,55 +129,55 @@ public class CDACGatewaySmsProvider {
             }
 
             log.info("CDACGatewaySmsProvider – HTTP status: {}", response.getStatusLine().getStatusCode());
-            log.info("CDACGatewaySmsProvider – gateway response: '{}'", responseString);
 
-            // Parse gateway response
-            // CDAC gateway returns XML/JSON response indicating success or failure
-            // Success indicators: contains "1", "success", or "ok" (case-insensitive)
-            // Failure indicators: contains "0", "error", "failed", "invalid" (case-insensitive)
             String lowerResponse = responseString.toLowerCase();
             
-            if (lowerResponse.contains("error") || lowerResponse.contains("failed") || 
-                lowerResponse.contains("invalid") || lowerResponse.contains("\"0\"") || 
-                lowerResponse.contains("<status>0</status>")) {
-                log.error("CDACGatewaySmsProvider – SMS delivery failed for mobile={}: response indicates error. Gateway response: {}", 
-                        mobileNumber, responseString);
+            // Check for explicit failure indicators
+            if (lowerResponse.contains("error") || 
+                lowerResponse.contains("failed") || 
+                lowerResponse.contains("invalid") || 
+                lowerResponse.contains("\"0\"") || 
+                lowerResponse.contains("<status>0</status>") ||
+                lowerResponse.contains("whitelisted") ||  // IP not whitelisted
+                lowerResponse.contains("not authorized") ||
+                lowerResponse.contains("authentication failed") ||
+                lowerResponse.contains("invalid template") ||
+                lowerResponse.contains("blocked") ||
+                lowerResponse.contains("suspended")) {
+                log.error("📊 SMS DELIVERY FAILED - mobile={} | gateway_response='{}'", mobileNumber, responseString);
                 return false;
             }
             
-            if (StringUtils.isNotBlank(responseString)) {
-                log.info("CDACGatewaySmsProvider – SMS accepted by gateway for mobile={}", mobileNumber);
-                log.debug("CDACGatewaySmsProvider – detailed response for mobile={}: {}", mobileNumber, responseString);
+            // Check for explicit success indicators
+            if (lowerResponse.contains("success") || 
+                lowerResponse.contains("accepted") ||
+                lowerResponse.contains("submitted") ||
+                lowerResponse.contains("\"1\"") || 
+                lowerResponse.contains("<status>1</status>") ||
+                lowerResponse.contains("ok")) {
+                log.info("📊 SMS ACCEPTED - mobile={} | gateway_response='{}'", mobileNumber, responseString);
                 return true;
-            } else {
-                log.warn("CDACGatewaySmsProvider – empty response from gateway for mobile={}", mobileNumber);
+            }
+            
+            // If response is blank, it's a failure
+            if (StringUtils.isBlank(responseString)) {
+                log.warn("📊 SMS FAILED - mobile={} | empty_response", mobileNumber);
                 return false;
             }
+            
+            // For any other non-empty response without explicit success keywords, treat as failure
+            log.warn("📊 SMS FAILED - mobile={} | ambiguous_response='{}' | treating_as_failure", mobileNumber, responseString);
+            return false;
 
         } catch (NoSuchAlgorithmException | KeyManagementException e) {
-            log.error("CDACGatewaySmsProvider – SSL/crypto error for mobile={}: {}", mobileNumber, e.getMessage(), e);
+            log.error("❌ SMS ERROR - mobile={} | type=SSL/Crypto | error={}", mobileNumber, e.getMessage(), e);
             return false;
         } catch (Exception e) {
-            log.error("CDACGatewaySmsProvider – IO error for mobile={}: {}", mobileNumber, e.getMessage(), e);
+            log.error("❌ SMS ERROR - mobile={} | type=IO | error={}", mobileNumber, e.getMessage(), e);
             return false;
         }
     }
 
-    // -----------------------------------------------------------------------
-    //  DLT Template resolution
-    // -----------------------------------------------------------------------
-
-    /**
-     * Resolves the DLT-registered template-id for the given OTP purpose.
-     *
-     * <p>Lookup order:
-     * <ol>
-     *   <li>Exact match on {@code purpose} key (case-insensitive)</li>
-     *   <li>First template whose key is a substring of {@code smsText} (content-based fallback)</li>
-     *   <li>Value of key {@code DEFAULT} if present</li>
-     *   <li>Empty string (gateway will reject — configure templates in application.properties)</li>
-     * </ol>
-     */
     private String resolveDltTemplateId(String purpose) {
         if(purpose.equalsIgnoreCase("signupOtp")){
             return signupOtp;
@@ -275,15 +188,10 @@ public class CDACGatewaySmsProvider {
         } else if(purpose.equalsIgnoreCase("deleteUserAccountPhone")){
             return deleteUserAccountPhone;
         } else {
-            log.warn("CDACGatewaySmsProvider – unknown purpose '{}', no matching DLT template. "
-                    + "SMS will be rejected by gateway. Check configuration.", purpose);
+            log.warn("⚠️ DLT TEMPLATE NOT FOUND - purpose={} | hint=check_configuration", purpose);
             return "";
         }
     }
-
-    // -----------------------------------------------------------------------
-    //  Cryptographic helpers
-    // -----------------------------------------------------------------------
 
     /**
      * Computes the SHA-1 hex digest of {@code text} encoded as ISO-8859-1.
@@ -333,4 +241,3 @@ public class CDACGatewaySmsProvider {
         return buf.toString();
     }
 }
-

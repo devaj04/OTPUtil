@@ -73,10 +73,10 @@ public class OtpServiceImpl implements OtpService {
     @Value("${otp.max.attempts:3}")
     private int maxAttempts;
 
-    @Value("${otp.ratelimit.max-per-hour:3}")
+    @Value("${otp.rateLimit.max-per-hour:3}")
     private int rateLimitMaxPerHour;
 
-    @Value("${otp.ratelimit.window-seconds:3600}")
+    @Value("${otp.rateLimit.window-seconds:3600}")
     private long rateLimitWindowSeconds;
 
     // -----------------------------------------------------------------------
@@ -107,7 +107,6 @@ public class OtpServiceImpl implements OtpService {
 
         // 2. Generate raw OTP
         String rawOtp = otpGenerator.generate();
-        log.info("Generated OTP for key={}, type={}, otp={}", sanitisedKey, request.getType(), rawOtp);
 
         // 3. Encrypt
         String encryptedOtp = encryptionUtil.encrypt(rawOtp);

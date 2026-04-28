@@ -149,7 +149,6 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public boolean sendSms(String toPhone, String otp, String purpose) {
-        log.info("Sending OTP SMS via CDAC gateway to={} purpose={}", toPhone, purpose);
         try {
             String smsText = buildSmsBody(otp, purpose);
             boolean sent = cdacGatewaySmsProvider.send(toPhone, smsText, purpose);
