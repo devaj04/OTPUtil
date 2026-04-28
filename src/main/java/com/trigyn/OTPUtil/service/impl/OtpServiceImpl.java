@@ -261,7 +261,7 @@ public class OtpServiceImpl implements OtpService {
     private void deleteOtp(String cassandraKey, String redisKey) {
         try {
             redisTemplate.delete(redisKey);
-            log.debug("OTP deleted from Redis for key={}", cassandraKey);
+            log.info("OTP deleted from Redis for key={}", cassandraKey);
         } catch (Exception e) {
             log.warn("Failed to delete OTP from Redis for key={}: {}", cassandraKey, e.getMessage());
         }
@@ -271,7 +271,7 @@ public class OtpServiceImpl implements OtpService {
     private void silentDeleteFromCassandra(String key) {
         try {
             otpTransactionRepository.deleteByKey(key);
-            log.debug("OTP deleted from Cassandra for key={}", key);
+            log.info("OTP deleted from Cassandra for key={}", key);
         } catch (Exception e) {
             log.warn("Failed to delete OTP from Cassandra for key={}: {}", key, e.getMessage());
         }
@@ -306,6 +306,9 @@ public class OtpServiceImpl implements OtpService {
     /**
      * Checks and updates the rate limit for OTP generation.
      * Maximum allowed: 3 OTP generations per hour per key.
+     * 
+     * When TTL expires (3600 seconds), the attemptedCount is reset to 0
+     * to allow fresh OTP generation attempts in the new window.
      *
      * @param key the email or phone identifier
      * @throws OtpException if rate limit exceeded
@@ -316,24 +319,47 @@ public class OtpServiceImpl implements OtpService {
 
             if (existingLimit.isPresent()) {
                 OtpRateLimit rateLimit = existingLimit.get();
-                log.info("Rate limit check: key={}, currentCount={}, maxAllowed={}",
-                        key, rateLimit.getAttemptedCount(), rateLimitMaxPerHour);
+                
+                // Check if TTL window has expired
+                Instant recordTime = rateLimit.getTimestamp();
+                Instant now = Instant.now();
+                long secondsElapsed = java.time.temporal.ChronoUnit.SECONDS.between(recordTime, now);
+                boolean isTtlExpired = secondsElapsed >= rateLimitWindowSeconds;
+                
+                log.warn("⏱️ RATE LIMIT CHECK - key={} | timestamp={} | current={} | elapsed={}s | window={}s | count={}/{} | expired={}",
+                        key, recordTime, now, secondsElapsed, rateLimitWindowSeconds, rateLimit.getAttemptedCount(), rateLimitMaxPerHour, isTtlExpired ? "✅ YES" : "❌ NO");
+                
+                if (isTtlExpired) {
+                    // TTL window expired - reset the counter to 0 and start fresh
+                    rateLimit.setAttemptedCount(0);
+                    rateLimit.setTimestamp(now);
+                    cassandraOperations.update(rateLimit);
+                    log.warn("🔄 RATE LIMIT RESET TRIGGERED! - key={} | elapsed={}s | window={}s | cassandra_updated | redis_cleared", 
+                            key, secondsElapsed, rateLimitWindowSeconds);
+                    
+                    // Also clear from Redis if exists (best-effort)
+                    clearRateLimitFromRedis(key);
+                }
 
                 // If already at max, reject
                 if (rateLimit.getAttemptedCount() >= rateLimitMaxPerHour) {
-                    log.warn("Rate limit exceeded for key={}, attempted={}, max={}",
+                    log.warn("❌ RATE LIMIT EXCEEDED - key={} | attempted={} | max={}", 
                             key, rateLimit.getAttemptedCount(), rateLimitMaxPerHour);
                     throw OtpException.rateLimitExceeded();
                 }
 
                 // Increment attempt count
-                rateLimit.setAttemptedCount(rateLimit.getAttemptedCount() + 1);
-                rateLimit.setTimestamp(Instant.now());
+                int oldCount = rateLimit.getAttemptedCount();
+                rateLimit.setAttemptedCount(oldCount + 1);
+                rateLimit.setTimestamp(now);
                 cassandraOperations.update(rateLimit);
-                log.info("Rate limit updated: key={}, newCount={}", key, rateLimit.getAttemptedCount());
+                log.warn("📊 RATE LIMIT UPDATED - key={} | oldCount={} | newCount={}/{}", 
+                        key, oldCount, oldCount + 1, rateLimitMaxPerHour);
 
             } else {
                 // First request for this key in this hour - create new record
+                log.warn("📝 RATE LIMIT CREATED - First request for key={}", key);
+                
                 OtpRateLimit newLimit = OtpRateLimit.builder()
                         .key(key)
                         .attemptedCount(1)
@@ -345,13 +371,31 @@ public class OtpServiceImpl implements OtpService {
                         .ttl(Duration.ofSeconds(rateLimitWindowSeconds))
                         .build();
                 cassandraOperations.insert(newLimit, insertOptions);
-                log.info("Rate limit created: key={}, maxAllowed={}, TTL={}s", key, rateLimitMaxPerHour, rateLimitWindowSeconds);
+                log.warn("📝 RATE LIMIT INSERTED - key={} | maxAllowed={} | TTL={}s", 
+                        key, rateLimitMaxPerHour, rateLimitWindowSeconds);
             }
         } catch (OtpException e) {
             throw e;  // Re-throw rate limit exceptions
         } catch (Exception e) {
-            log.error("Error checking rate limit for key={}: {}", key, e.getMessage(), e);
+            log.error("❌ ERROR checking rate limit - key={} | error={}", key, e.getMessage(), e);
             throw OtpException.encryptionError();  // Fail secure - treat as error
+        }
+    }
+
+    /**
+     * Clears rate limit data from Redis cache (best-effort).
+     * Used when TTL expires to clean up any cached rate limit data.
+     *
+     * @param key the email or phone identifier
+     */
+    private void clearRateLimitFromRedis(String key) {
+        try {
+            String redisRateLimitKey = "RATELIMIT:" + key;
+            redisTemplate.delete(redisRateLimitKey);
+            log.info("Cleared rate limit from Redis for key={}", key);
+        } catch (Exception e) {
+            log.warn("Failed to clear rate limit from Redis for key={}: {}", key, e.getMessage());
+            // Not critical - just log and continue
         }
     }
 }
