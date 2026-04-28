@@ -178,39 +178,7 @@ curl -X POST http://localhost:8080/api/v1/otp/generate \
 
 ---
 
-### 1.8 Generate OTP - Rate Limit Exceeded
-**Purpose**: Test rate limiting - exceed 3 requests per hour  
-**Status Code**: 409 (Conflict - Rate Limited)
-
-```bash
-# Run 4 times in succession for same key
-for i in {1..4}; do
-  echo "Attempt $i:"
-  curl -s -X POST http://localhost:8080/api/v1/otp/generate \
-    -H "Content-Type: application/json" \
-    -d '{
-      "request": {
-        "key": "ratelimit@example.com",
-        "type": "email"
-      }
-    }' | jq '.status'
-  sleep 1
-done
-```
-
-**Expected**: First 3 return 200, 4th returns 409
-```json
-{
-  "status": {
-    "code": "OTP_409",
-    "message": "Rate limit exceeded"
-  }
-}
-```
-
----
-
-### 1.9 Generate OTP - Invalid Email Type
+### 1.8 Generate OTP - Invalid Email Type
 **Purpose**: Test with invalid email format  
 **Status Code**: 400 (Bad Request)
 
@@ -227,7 +195,7 @@ curl -X POST http://localhost:8080/api/v1/otp/generate \
 
 ---
 
-### 1.10 Generate OTP - Delivery Failure (206)
+### 1.9 Generate OTP - Delivery Failure (206)
 **Purpose**: Demonstrates scenario where OTP generates but delivery fails  
 **Status Code**: 206 (Partial Content - Generated but not sent)
 
@@ -350,44 +318,9 @@ curl -X POST http://localhost:8080/api/v1/otp/verify \
   }
 }
 ```
-
 ---
 
-### 2.4 Verify OTP - Max Attempts Exceeded
-**Purpose**: Test max verification attempts exceeded (max 3 attempts)  
-**Status Code**: 429 (Too Many Requests)
-
-```bash
-# Try verifying 4 times with wrong OTP
-for i in {1..4}; do
-  echo "Verification Attempt $i:"
-  curl -s -X POST http://localhost:8080/api/v1/otp/verify \
-    -H "Content-Type: application/json" \
-    -d '{
-      "request": {
-        "key": "user@example.com",
-        "type": "email",
-        "otp": "999999",
-        "referenceId": "550e8400-e29b-41d4-a716-446655440000"
-      }
-    }' | jq '.status'
-  sleep 1
-done
-```
-
-**Expected**: First 3 return 422 (Wrong OTP), 4th returns 429
-```json
-{
-  "status": {
-    "code": "OTP_429",
-    "message": "Max verification attempts exceeded"
-  }
-}
-```
-
----
-
-### 2.5 Verify OTP - Missing Reference ID
+### 2.4 Verify OTP - Missing Reference ID
 **Purpose**: Test validation - missing required 'referenceId' field  
 **Status Code**: 400 (Bad Request)
 
@@ -405,7 +338,7 @@ curl -X POST http://localhost:8080/api/v1/otp/verify \
 
 ---
 
-### 2.6 Verify OTP - Invalid OTP Format
+### 2.5 Verify OTP - Invalid OTP Format
 **Purpose**: Test with invalid OTP format (not 6 digits)  
 **Status Code**: 400 (Bad Request)
 
@@ -418,196 +351,6 @@ curl -X POST http://localhost:8080/api/v1/otp/verify \
       "type": "email",
       "otp": "abc",
       "referenceId": "550e8400-e29b-41d4-a716-446655440000"
-    }
-  }'
-```
-
----
-
-## 🎯 Advanced Testing Scenarios
-
-### Scenario 1: Complete OTP Flow (Generate → Verify)
-**Purpose**: Test the complete OTP lifecycle
-
-```bash
-#!/bin/bash
-
-# Step 1: Generate OTP
-echo "=== Step 1: Generating OTP ==="
-RESPONSE=$(curl -s -X POST http://localhost:8080/api/v1/otp/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "request": {
-      "key": "test@example.com",
-      "type": "email"
-    }
-  }')
-
-echo "$RESPONSE" | jq '.'
-
-# Extract referenceId
-REF_ID=$(echo "$RESPONSE" | jq -r '.response.referenceId')
-STATUS=$(echo "$RESPONSE" | jq -r '.status.code')
-
-echo ""
-echo "Generated Reference ID: $REF_ID"
-echo "Status: $STATUS"
-echo ""
-
-# Step 2: Verify OTP (use actual OTP from email)
-echo "=== Step 2: Verifying OTP ==="
-VERIFY_RESPONSE=$(curl -s -X POST http://localhost:8080/api/v1/otp/verify \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"request\": {
-      \"key\": \"test@example.com\",
-      \"type\": \"email\",
-      \"otp\": \"123456\",
-      \"referenceId\": \"$REF_ID\"
-    }
-  }")
-
-echo "$VERIFY_RESPONSE" | jq '.'
-```
-
----
-
-### Scenario 2: Test Multiple Purposes
-**Purpose**: Generate OTPs for all different purposes
-
-```bash
-#!/bin/bash
-
-# Purpose 1: Signup (default)
-echo "1. Signup OTP:"
-curl -s -X POST http://localhost:8080/api/v1/otp/generate \
-  -H "Content-Type: application/json" \
-  -d '{"request":{"key":"user1@example.com","type":"email"}}' | jq '.status'
-
-# Purpose 2: Password Reset
-echo "2. Password Reset OTP:"
-curl -s -X POST http://localhost:8080/api/v1/otp/generate \
-  -H "Content-Type: application/json" \
-  -d '{"request":{"key":"user2@example.com","type":"email","purpose":"resetPasswordWithOtp"}}' | jq '.status'
-
-# Purpose 3: Contact Update
-echo "3. Contact Update OTP:"
-curl -s -X POST http://localhost:8080/api/v1/otp/generate \
-  -H "Content-Type: application/json" \
-  -d '{"request":{"key":"user3@example.com","type":"email","purpose":"otpContactUpdateTemplate"}}' | jq '.status'
-
-# Purpose 4: Account Deletion
-echo "4. Account Deletion OTP:"
-curl -s -X POST http://localhost:8080/api/v1/otp/generate \
-  -H "Content-Type: application/json" \
-  -d '{"request":{"key":"user4@example.com","type":"email","purpose":"deleteUserAccountTemplate"}}' | jq '.status'
-```
-
----
-
-### Scenario 3: Pretty Print JSON Response
-**Purpose**: Generate OTP and pretty-print the JSON output
-
-```bash
-curl -X POST http://localhost:8080/api/v1/otp/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "request": {
-      "key": "user@example.com",
-      "type": "email"
-    }
-  }' | jq '.'
-```
-
----
-
-### Scenario 4: Save Response to File
-**Purpose**: Save API response to a file for later analysis
-
-```bash
-curl -X POST http://localhost:8080/api/v1/otp/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "request": {
-      "key": "user@example.com",
-      "type": "email"
-    }
-  }' > otp_response.json
-
-# View the file
-cat otp_response.json | jq '.'
-```
-
----
-
-### Scenario 5: Send Request from File
-**Purpose**: Send OTP request from a JSON file
-
-**Create file** `otp_request.json`:
-```json
-{
-  "request": {
-    "key": "user@example.com",
-    "type": "email",
-    "purpose": "resetPasswordWithOtp"
-  }
-}
-```
-
-**Use with curl**:
-```bash
-curl -X POST http://localhost:8080/api/v1/otp/generate \
-  -H "Content-Type: application/json" \
-  -d @otp_request.json
-```
-
----
-
-### Scenario 6: Check Response Headers
-**Purpose**: View HTTP response headers (status, content-type, etc.)
-
-```bash
-curl -i -X POST http://localhost:8080/api/v1/otp/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "request": {
-      "key": "user@example.com",
-      "type": "email"
-    }
-  }'
-```
-
----
-
-### Scenario 7: Verbose Mode (Debug)
-**Purpose**: See all request/response details for debugging
-
-```bash
-curl -v -X POST http://localhost:8080/api/v1/otp/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "request": {
-      "key": "user@example.com",
-      "type": "email"
-    }
-  }'
-```
-
----
-
-### Scenario 8: Add Custom Headers
-**Purpose**: Add custom tracking headers to requests
-
-```bash
-curl -X POST http://localhost:8080/api/v1/otp/generate \
-  -H "Content-Type: application/json" \
-  -H "X-Request-ID: 12345" \
-  -H "X-Client-Version: 1.0" \
-  -H "X-Timestamp: $(date +%s)" \
-  -d '{
-    "request": {
-      "key": "user@example.com",
-      "type": "email"
     }
   }'
 ```
