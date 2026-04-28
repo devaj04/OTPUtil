@@ -10,7 +10,7 @@ A production-ready OTP (One-Time Password) microservice built with **Spring Boot
 |---|---|
 | Input sanitisation & validation | Email/phone regex, purpose whitelist |
 | Purpose-based OTP gating | Configurable via `otp.valid.purposes` |
-| Supported purposes | `signupOtp`, `resetPasswordWithOtp`, `otpContactUpdateTemplate`, `deleteUserAccountTemplate`, `1107175041055648550` |
+| Supported purposes | `resetPasswordWithOtp`, `otpContactUpdateTemplate`, `deleteUserAccountTemplate`, `1107175041055648550` |
 | OTP generation | Cryptographically-secure, configurable length (default 6 digits) |
 | Delivery | Email (Spring Mail / SMTP) · SMS (CDAC NIC gateway) |
 | Encryption | AES-256-GCM – OTP stored encrypted in Cassandra |
@@ -253,7 +253,7 @@ Both requests automatically use the configured signup purpose from `otp.default.
 |---|---|---|---|
 | Signup/Registration | `signupOtp` | email/phone | User signup/registration – **no purpose field needed** |
 | Password Reset | `resetPasswordWithOtp` | email/phone | Reset user password |
-| Contact Update | `otpContactUpdateTemplate` | email/phone | Verify new email or phone number |
+| Contact Update | `otpContactUpdateTemplate` | email/phone | Verify email or phone number |
 | Delete Account | `deleteUserAccountTemplate` | email | Confirm account deletion |
 | Delete Account (Phone) | `1107175041055648550` | phone | Delete account via phone (TRAI-compliant template) |
 
