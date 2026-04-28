@@ -49,32 +49,32 @@ public class CDACGatewaySmsProvider {
     //  Environment-variable overrides are checked inside @PostConstruct init().
     // -----------------------------------------------------------------------
 
-    @Value("${cdac.sms.base-url}")
+    @Value("${sms.base-url}")
     private String baseUrl;
 
-    @Value("${cdac.sms.sender-id}")
+    @Value("${sms.sender-id}")
     private String senderId;
 
-    @Value("${cdac.sms.username}")
+    @Value("${sms.username}")
     private String userName;
 
-    @Value("${cdac.sms.password}")
+    @Value("${sms.password}")
     private String password;
 
-    @Value("${cdac.sms.dept-secure-key}")
+    @Value("${sms.dept-secure-key}")
     private String deptSecureKey;
 
-    @Value("${cdac.sms.dlt-templates.signupOtp}")
+    @Value("${sms.dlt-templates.signupOtp}")
     private String signupOtp;
 
-    @Value("${cdac.sms.dlt-templates.resetPasswordWithOtp}")
+    @Value("${sms.dlt-templates.resetPasswordWithOtp}")
     private String resetPasswordWithOtp;
 
-    @Value("${cdac.sms.dlt-templates.otpContactUpdateTemplate}")
+    @Value("${sms.dlt-templates.otpContactUpdateTemplate}")
     private String otpContactUpdateTemplate;
 
-    @Value("${cdac.sms.dlt-templates.deletePhone}")
-    private String deletePhone;
+    @Value("${sms.dlt-templates.deleteUserAccountPhone}")
+    private String deleteUserAccountPhone;
 
 
     /**
@@ -171,8 +171,8 @@ public class CDACGatewaySmsProvider {
     private boolean sendSms(String mobileNumber, String smsText, String purpose) {
         String responseString = "";
         try {
-            String dltTemplateId = signupOtp;
-            log.info("CDACGatewaySmsProvider – dltTemplateId='{}' purpose='{}'", dltTemplateId, purpose);
+            String dltTemplateId = resolveDltTemplateId(purpose);
+            log.info("CDACGatewaySmsProvider – dltTemplateId='{}' purpose='{}' smsText='{}' ", dltTemplateId, purpose, smsText);
 
             // TLS 1.2 context
             SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
@@ -263,31 +263,20 @@ public class CDACGatewaySmsProvider {
      *   <li>Empty string (gateway will reject — configure templates in application.properties)</li>
      * </ol>
      */
-    private String resolveDltTemplateId(String purpose, String smsText) {
-        if (dltTemplates == null || dltTemplates.isEmpty()) {
-            log.info("CDACGatewaySmsProvider – dltTemplates map is empty. Configure cdac.sms.dlt-templates.*");
+    private String resolveDltTemplateId(String purpose) {
+        if(purpose.equalsIgnoreCase("signupOtp")){
+            return signupOtp;
+        } else if(purpose.equalsIgnoreCase("resetPasswordWithOtp")){
+            return resetPasswordWithOtp;
+        } else if(purpose.equalsIgnoreCase("otpContactUpdateTemplate")){
+            return otpContactUpdateTemplate;
+        } else if(purpose.equalsIgnoreCase("deleteUserAccountPhone")){
+            return deleteUserAccountPhone;
+        } else {
+            log.warn("CDACGatewaySmsProvider – unknown purpose '{}', no matching DLT template. "
+                    + "SMS will be rejected by gateway. Check configuration.", purpose);
             return "";
         }
-        // 1. Exact purpose match (case-insensitive)
-        for (Map.Entry<String, String> entry : dltTemplates.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase(purpose)) {
-                return entry.getValue();
-            }
-        }
-        // 2. Content-based fallback: key appears in smsText
-        for (Map.Entry<String, String> entry : dltTemplates.entrySet()) {
-            if (smsText != null && smsText.contains(entry.getKey())) {
-                return entry.getValue();
-            }
-        }
-        // 3. DEFAULT fallback
-        String defaultTemplate = dltTemplates.get("DEFAULT");
-        if (StringUtils.isNotBlank(defaultTemplate)) {
-            log.warn("CDACGatewaySmsProvider – using DEFAULT template for purpose='{}'", purpose);
-            return defaultTemplate;
-        }
-        log.error("CDACGatewaySmsProvider – no DLT template found for purpose='{}'. SMS will likely fail.", purpose);
-        return "";
     }
 
     // -----------------------------------------------------------------------

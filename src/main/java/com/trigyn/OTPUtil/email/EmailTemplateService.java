@@ -29,8 +29,6 @@ public class EmailTemplateService {
         loadTemplate("resetPasswordWithOtp",     "reset-password-otp.vm");
         loadTemplate("otpContactUpdateTemplate", "contact-update-otp.vm");
         loadTemplate("deleteUserAccountTemplate","delete-account-otp.vm");
-        // 1307171619784284292 = delete account for phone – reuses same template
-        loadTemplate("1307171619784284292",      "delete-account-otp.vm");
         log.info("EmailTemplateService: {} template(s) loaded", templates.size());
     }
 
@@ -54,7 +52,6 @@ public class EmailTemplateService {
             ClassPathResource resource = new ClassPathResource(TEMPLATE_PATH + fileName);
             String content = resource.getContentAsString(StandardCharsets.UTF_8);
             templates.put(purpose, content);
-            log.debug("EmailTemplateService: loaded template '{}' for purpose='{}'", fileName, purpose);
         } catch (IOException e) {
             log.error("EmailTemplateService: could not load template '{}': {}", fileName, e.getMessage());
         }

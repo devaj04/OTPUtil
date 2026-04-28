@@ -39,8 +39,17 @@ public class NotificationServiceImpl implements NotificationService {
     private final EmailTemplateService   emailTemplateService;
     private final SendEmail              sendEmail;
 
-    @Value("${notification.email.subject}")
-    private String emailSubject;
+    @Value("${email.subject.signupOtp}")
+    private String signupOtpSubject;
+
+    @Value("${email.subject.resetPasswordWithOtp}")
+    private String resetPasswordWithOtpSubject;
+
+    @Value("${email.subject.otpContactUpdateTemplate}")
+    private String otpContactUpdateTemplateSubject;
+
+    @Value("${email.subject.deleteUserAccountTemplate}")
+    private String deleteUserAccountTemplateSubject;
 
     @Value("${otp.ttl.seconds:60}")
     private long ttlSeconds;
@@ -56,13 +65,14 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public boolean sendEmail(String toEmail, String otp, String purpose) {
+        String subject = getSubject(purpose);
         try {
             // Build template variables map
             Map<String, Object> request = new HashMap<>();
             request.put("otp",      otp);
             request.put("purpose",  purpose);
             request.put("validFor", ttlSeconds);
-            request.put("subject",  emailSubject);
+            request.put("subject", subject);
 
             // Resolve the Velocity template for this purpose
             String template = emailTemplateService.getTemplate(purpose);
@@ -72,6 +82,20 @@ public class NotificationServiceImpl implements NotificationService {
             log.error("Failed to send OTP email to {}: {}", toEmail, e.getMessage(), e);
             return false;
         }
+    }
+
+    private String getSubject(String purpose) {
+        String subject = null;
+        if(purpose.equalsIgnoreCase("signupOtp")){
+            subject = signupOtpSubject;
+        } else if(purpose.equalsIgnoreCase("resetPasswordWithOtp")){
+            subject = resetPasswordWithOtpSubject;
+        } else if(purpose.equalsIgnoreCase("otpContactUpdateTemplate")){
+            subject = otpContactUpdateTemplateSubject;
+        } else if(purpose.equalsIgnoreCase("deleteUserAccountTemplate")){
+            subject = deleteUserAccountTemplateSubject;
+        }
+        return subject;
     }
 
     /**
@@ -140,8 +164,24 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     private String buildSmsBody(String otp, String purpose) {
-        return String.format(
-                "Your OTP for %s is %s. Valid for %d seconds. Do NOT share.",
-                purpose, otp, ttlSeconds);
+
+        if(purpose.equalsIgnoreCase("signupOtp")){
+            return String.format(
+                    "OTP to verify your phone number on DIKSHA is %s. This is valid for %d seconds only.",
+                    otp, ttlSeconds);
+        } else if(purpose.equalsIgnoreCase("resetPasswordWithOtp")){
+            return String.format(
+                    "OTP to reset your password on DIKSHA is %s. This is valid for %d seconds only.",
+                     otp, ttlSeconds);
+        } else if(purpose.equalsIgnoreCase("otpContactUpdateTemplate")){
+            return String.format(
+                    "DIKSHA: Use OTP %s to edit the contact details for your DIKSHA profile.",
+                     otp);
+        } else if(purpose.equalsIgnoreCase("1107175041055648550")){
+            return String.format(
+                    "Use OTP %s to delete your DIKSHA account. This is valid for %d seconds only.",
+                    otp, ttlSeconds);
+        }
+        return null;
     }
 }
