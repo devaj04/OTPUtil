@@ -48,6 +48,8 @@ import java.util.UUID;
  *    5. Decrypt and compare OTP
  *    6. On success / max attempts → delete from Redis + Cassandra
  *    7. Return result
+ * 
+ * @author devaj04@gmail.com
  */
 @Slf4j
 @Service

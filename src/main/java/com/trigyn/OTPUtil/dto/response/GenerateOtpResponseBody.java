@@ -1,5 +1,9 @@
 package com.trigyn.OTPUtil.dto.response;
 
+/**
+ * @author devaj04@gmail.com
+ */
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
@@ -23,4 +27,3 @@ public class GenerateOtpResponseBody {
     @JsonProperty("validFor")
     private long validFor;
 }
-

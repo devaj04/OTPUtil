@@ -1,5 +1,9 @@
 package com.trigyn.OTPUtil.util;
 
+/**
+ * @author devaj04@gmail.com
+ */
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -27,4 +31,3 @@ public class OtpGenerator {
         return String.format("%0" + otpLength + "d", otpValue);
     }
 }
-

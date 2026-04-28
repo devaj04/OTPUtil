@@ -1,5 +1,9 @@
 package com.trigyn.OTPUtil.exception;
 
+/**
+ * @author devaj04@gmail.com
+ */
+
 import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
@@ -66,4 +70,3 @@ public class OtpException extends RuntimeException {
         return new OtpException("Internal encryption error.", "OTP_500", HttpStatus.INTERNAL_SERVER_ERROR);
     }
 }
-

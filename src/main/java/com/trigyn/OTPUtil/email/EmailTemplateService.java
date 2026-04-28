@@ -13,6 +13,8 @@ import java.util.Map;
 /**
  * Loads Velocity email templates from {@code classpath:templates/email/}
  * and provides them by OTP purpose.
+ * 
+ * @author devaj04@gmail.com
  */
 @Slf4j
 @Component

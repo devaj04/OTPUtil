@@ -1,5 +1,9 @@
 package com.trigyn.OTPUtil.entity;
 
+/**
+ * @author devaj04@gmail.com
+ */
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -69,4 +73,3 @@ public class OtpTransaction {
     @Column("purpose")
     private String purpose;
 }
-

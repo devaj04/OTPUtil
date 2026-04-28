@@ -28,6 +28,8 @@ import java.util.Map;
  * Notification failures are logged but do NOT throw exceptions.
  * OTP generation succeeds even if notification delivery fails.
  * The `otpSent` field in the response indicates actual delivery status.
+ * 
+ * @author devaj04@gmail.com
  */
 @Slf4j
 @Service

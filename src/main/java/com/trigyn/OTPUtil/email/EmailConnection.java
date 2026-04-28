@@ -1,5 +1,9 @@
 package com.trigyn.OTPUtil.email;
 
+/**
+ * @author devaj04@gmail.com
+ */
+
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.mail.*;

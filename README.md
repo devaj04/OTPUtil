@@ -10,7 +10,7 @@ A production-ready OTP (One-Time Password) microservice built with **Spring Boot
 |---|---|
 | Input sanitisation & validation | Email/phone regex, purpose whitelist |
 | Purpose-based OTP gating | Configurable via `otp.valid.purposes` |
-| Supported purposes | `signupOtp`, `resetPasswordWithOtp`, `otpContactUpdateTemplate`, `deleteUserAccountTemplate`, `1307171619784284292` |
+| Supported purposes | `signupOtp`, `resetPasswordWithOtp`, `otpContactUpdateTemplate`, `deleteUserAccountTemplate`, `1107175041055648550` |
 | OTP generation | Cryptographically-secure, configurable length (default 6 digits) |
 | Delivery | Email (Spring Mail / SMTP) · SMS (CDAC NIC gateway) |
 | Encryption | AES-256-GCM – OTP stored encrypted in Cassandra |
@@ -83,12 +83,17 @@ spring.mail.properties.mail.smtp.starttls.required=true
 
 # OTP
 otp.encryption.secret=Trigyn@OTPSecretKey#2024$Secure32B  # 32-byte AES-256 key
-otp.valid.purposes=signupOtp,resetPasswordWithOtp,otpContactUpdateTemplate,deleteUserAccountTemplate,1307171619784284292
+otp.valid.purposes=signupOtp,resetPasswordWithOtp,otpContactUpdateTemplate,deleteUserAccountTemplate,1107175041055648550
 otp.default.purpose=signupOtp  # Default when purpose not provided
+otp.ttl.seconds=60
+otp.max.attempts=3
+
+# Rate Limiting (per key, per hour)
+otp.ratelimit.max-per-hour=3
+otp.ratelimit.window-seconds=3600
 
 # Notification Settings
 notification.email.from=your-email@gmail.com
-notification.email.subject=Your OTP Code
 
 # CDAC SMS Gateway (see SMS Integration section below for details)
 cdac.sms.base-url=https://msdgweb.mgov.gov.in/esms/sendsmsrequestDLT
@@ -137,7 +142,7 @@ Base URL: `http://localhost:8080/api/v1/otp`
 ```json
 {
   "request": {
-    "key": "devajdildar1@gmail.com",
+    "key": "devaj04@gmail.com",
     "type": "email"
   }
 }
@@ -222,7 +227,7 @@ curl -X POST http://localhost:8080/api/v1/otp/generate \
   -H "Content-Type: application/json" \
   -d '{
     "request": {
-      "key": "devajdildar1@gmail.com",
+      "key": "devaj04@gmail.com",
       "type": "email"
     }
   }'
@@ -250,7 +255,7 @@ Both requests automatically use the configured signup purpose from `otp.default.
 | Password Reset | `resetPasswordWithOtp` | email/phone | Reset user password |
 | Contact Update | `otpContactUpdateTemplate` | email/phone | Verify new email or phone number |
 | Delete Account | `deleteUserAccountTemplate` | email | Confirm account deletion |
-| Delete Account (Phone) | `1307171619784284292` | phone | Delete account via phone (TRAI-compliant template) |
+| Delete Account (Phone) | `1107175041055648550` | phone | Delete account via phone (TRAI-compliant template) |
 
 
 ---
@@ -260,11 +265,13 @@ Both requests automatically use the configured signup purpose from `otp.default.
 | Code | HTTP | Meaning |
 |---|---|---|
 | `OTP_200` | 200 | Success |
+| `OTP_206` | 206 | OTP generated but notification delivery failed |
 | `OTP_400` | 400 | Invalid input / validation failure |
 | `OTP_401` | 400 | Invalid or unsupported purpose |
+| `OTP_409` | 409 | Active OTP already exists – max generation attempts exceeded within the hour |
 | `OTP_410` | 410 | OTP expired (TTL elapsed) |
 | `OTP_422` | 422 | OTP is incorrect |
-| `OTP_429` | 429 | Max attempts exceeded |
+| `OTP_429` | 429 | Max verification attempts exceeded |
 | `OTP_500` | 500 | Internal / encryption error |
 | `OTP_503` | 503 | Notification delivery failure |
 
@@ -279,7 +286,7 @@ src/main/java/com/trigyn/OTPUtil/
 │   ├── CassandraConfig.java         # Cassandra + CassandraOperations beans
 │   └── RedisConfig.java             # Typed RedisTemplate<String, OtpCacheEntry>
 ├── controller/
-│   └── OtpController.java           # /generate  /verify
+│   └── OtpController.java           # POST /generate, POST /verify
 ├── dto/
 │   ├── OtpCacheEntry.java           # Redis-cached OTP value object
 │   ├── request/
@@ -288,46 +295,105 @@ src/main/java/com/trigyn/OTPUtil/
 │   │   ├── VerifyOtpRequest.java
 │   │   └── VerifyOtpRequestEnvelope.java
 │   └── response/
-│       ├── ApiResponse.java
+│       ├── ApiResponse.java         # Generic response envelope
 │       ├── GenerateOtpResponseBody.java
 │       ├── StatusDto.java
 │       └── VerifyOtpResponseBody.java
+├── email/
+│   ├── EmailConnection.java         # SMTP transport lifecycle management
+│   ├── EmailTemplateService.java    # Velocity template loader
+│   └── SendEmail.java               # SMTP email dispatcher
 ├── entity/
-│   └── OtpTransaction.java          # Cassandra @Table entity
+│   ├── OtpTransaction.java          # Cassandra table: otp_transactions
+│   └── OtpRateLimit.java            # Cassandra table: otp_rate_limit (rate limiting)
 ├── exception/
 │   ├── OtpException.java            # Business exceptions with HTTP status
-│   └── GlobalExceptionHandler.java  # @RestControllerAdvice
+│   └── GlobalExceptionHandler.java  # @RestControllerAdvice for consistent error responses
 ├── repository/
-│   └── OtpTransactionRepository.java
+│   ├── OtpTransactionRepository.java  # Cassandra CRUD for otp_transactions
+│   └── OtpRateLimitRepository.java    # Cassandra CRUD for otp_rate_limit
 ├── service/
-│   ├── OtpService.java
-│   ├── NotificationService.java
+│   ├── OtpService.java              # Interface
+│   ├── NotificationService.java     # Interface
 │   └── impl/
-│       ├── OtpServiceImpl.java      # Core OTP logic
-│       └── NotificationServiceImpl.java  # Email + SMS stub
+│       ├── OtpServiceImpl.java       # Core OTP logic (generate + verify + rate limiting)
+│       └── NotificationServiceImpl.java  # Email (Velocity) + SMS (CDAC gateway)
+├── sms/
+│   └── CDACGatewaySmsProvider.java   # CDAC NIC SMS gateway integration
 └── util/
     ├── EncryptionUtil.java          # AES-256-GCM encrypt/decrypt
-    ├── OtpGenerator.java            # SecureRandom OTP
-    └── InputValidator.java          # Sanitise + validate inputs
+    ├── OtpGenerator.java            # SecureRandom OTP generator
+    ├── InputValidator.java          # Sanitise + validate email/phone/purpose
+    └── ProjectUtil.java             # Velocity context builder
 ```
 
 ---
 
-## SMS Integration – CDAC NIC Gateway
+## Rate Limiting
+
+The OTP service enforces **per-key rate limiting**:
+
+- **Max OTP generations per hour:** 3 per unique key (email/phone)
+- **Window:** 1 hour (3600 seconds)
+- **Auto-cleanup:** Rate limit records auto-expire after 1 hour via Cassandra TTL
+
+**Error response when limit exceeded:**
+```json
+{
+  "response": null,
+  "status": {
+    "code": "OTP_409",
+    "message": "An OTP has already been sent. Please verify it or wait 45 seconds for it to expire before requesting a new one."
+  }
+}
+```
+
+---
+
+## Timezone Support
+
+All timestamps are stored and returned in **Indian Standard Time (IST, UTC+5:30)**:
+
+| Field | Storage | Example |
+|---|---|---|
+| `generatedTs` (API response) | ISO-8601 with IST offset | `2026-04-28T13:26:53+05:30` |
+| `createdOn` (Cassandra) | ISO-8601 with IST offset | `2026-04-28T13:26:53+05:30` |
+| `lastModifiedTime` (Cassandra) | ISO-8601 with IST offset | `2026-04-28T13:26:53+05:30` |
+| `timestamp` (Rate Limit) | ISO-8601 with IST offset | `2026-04-28T13:26:53+05:30` |
+
+---
+
+## Email Templates
+
+All email templates use **Velocity templating** and follow a consistent **DIKSHA-branded format**:
+
+```
+OTP to verify your email ID on DIKSHA is {OTP}. This is valid for {seconds} seconds only.
+```
+
+**Templates:**
+- `signup-otp.vm` – Signup/registration OTP
+- `reset-password-otp.vm` – Password reset OTP
+- `contact-update-otp.vm` – Contact verification OTP
+- `delete-account-otp.vm` – Account deletion confirmation OTP
+
+---
+
+## SMS Integration with CDAC NIC Gateway
 
 SMS is delivered via the **CDAC NIC msdgweb gateway** (`https://msdgweb.mgov.gov.in/esms/sendsmsrequestDLT`).
 
 ### Configuration
 
-Set these values in `application.properties` **or** as OS environment variables (env vars take precedence):
+Set these values in `application.properties`:
 
-| Property | Env Variable | Description |
-|---|---|---|
-| `cdac.sms.base-url` | `cdac_sms_gateway_provider_base_url` | Gateway endpoint URL |
-| `cdac.sms.sender-id` | `cdac_sms_gateway_provider_senderid` | Registered DLT sender-id |
-| `cdac.sms.username` | `cdac_sms_gateway_provider_username` | Gateway login username |
-| `cdac.sms.password` | `cdac_sms_gateway_provider_password` | Gateway password (SHA-1 hashed before transmission) |
-| `cdac.sms.dept-secure-key` | `cdac_sms_gateway_provider_secure_key` | Department secret key (UUID) used for SHA-512 hash |
+| Property | Description |
+|---|---|
+| `sms.base-url` | Gateway endpoint URL (default: `https://msdgweb.mgov.gov.in/esms/sendsmsrequestDLT`) |
+| `sms.sender-id` | Registered DLT sender-id |
+| `sms.username` | Gateway login username |
+| `sms.password` | Gateway password (SHA-1 hashed before transmission) |
+| `sms.dept-secure-key` | Department secret key (UUID) used for SHA-512 hash |
 
 ### DLT Template IDs
 
@@ -335,12 +401,10 @@ Every outbound SMS must carry a DLT-registered template-id (TRAI mandate).
 Register all OTP message templates on your telecom operator's DLT portal, then map them per purpose:
 
 ```properties
-cdac.sms.dlt-templates.signupOtp=1007XXXXXXXXX2
-cdac.sms.dlt-templates.resetPasswordWithOtp=1007XXXXXXXXXX
-cdac.sms.dlt-templates.otpContactUpdateTemplate=1007XXXXXXXXXY
-cdac.sms.dlt-templates.deleteUserAccountTemplate=1007XXXXXXXXXZ
-cdac.sms.dlt-templates.1307171619784284292=1007XXXXXXXXX0
-cdac.sms.dlt-templates.DEFAULT=1007XXXXXXXXX1  # fallback for unmapped purposes
+sms.dlt-templates.signupOtp=1007XXXXXXXXX2
+sms.dlt-templates.resetPasswordWithOtp=1007XXXXXXXXXX
+sms.dlt-templates.otpContactUpdateTemplate=1007XXXXXXXXXY
+sms.dlt-templates.deleteUserAccountPhone=1007XXXXXXXXX0
 ```
 
 ### Security – request signing
@@ -387,10 +451,13 @@ Each SMS request is signed with two hashes:
 
 ---
 
-## Error Codes and Status Handling
+## Security Notes
 
 - OTP is encrypted with **AES-256-GCM** before being persisted.
 - Change `otp.encryption.secret` to a 32-byte random key in production and store it in a secrets manager (Vault, AWS SM, etc.).
 - Redis `OTP:<key>` entries auto-expire after `otp.ttl.seconds` (default 60 s).
 - Cassandra rows also carry a native TTL so they self-purge without a cron job.
+- All timestamps use **IST (Indian Standard Time, UTC+5:30)** – configured via `spring.jackson.time-zone=Asia/Kolkata`
+- Rate limit records auto-expire after 1 hour via Cassandra TTL – no background cleanup job needed.
+- SMTP connection is intelligently recycled to prevent stale connection issues.
 

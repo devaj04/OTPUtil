@@ -1,5 +1,9 @@
 package com.trigyn.OTPUtil.repository;
 
+/**
+ * @author devaj04@gmail.com
+ */
+
 import com.trigyn.OTPUtil.entity.OtpRateLimit;
 import org.springframework.data.cassandra.repository.CassandraRepository;
 import org.springframework.stereotype.Repository;
@@ -20,4 +24,3 @@ public interface OtpRateLimitRepository extends CassandraRepository<OtpRateLimit
      */
     Optional<OtpRateLimit> findByKey(String key);
 }
-

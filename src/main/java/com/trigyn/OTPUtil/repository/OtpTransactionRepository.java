@@ -1,5 +1,9 @@
 package com.trigyn.OTPUtil.repository;
 
+/**
+ * @author devaj04@gmail.com
+ */
+
 import com.trigyn.OTPUtil.entity.OtpTransaction;
 import org.springframework.data.cassandra.repository.CassandraRepository;
 import org.springframework.stereotype.Repository;
@@ -17,4 +21,3 @@ public interface OtpTransactionRepository extends CassandraRepository<OtpTransac
 
     void deleteByKey(String key);
 }
-

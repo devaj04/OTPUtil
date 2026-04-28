@@ -1,5 +1,9 @@
 package com.trigyn.OTPUtil.config;
 
+/**
+ * @author devaj04@gmail.com
+ */
+
 import com.datastax.oss.driver.api.core.CqlSession;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;

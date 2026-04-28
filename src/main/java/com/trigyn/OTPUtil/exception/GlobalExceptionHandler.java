@@ -1,5 +1,9 @@
 package com.trigyn.OTPUtil.exception;
 
+/**
+ * @author devaj04@gmail.com
+ */
+
 import com.trigyn.OTPUtil.dto.response.ApiResponse;
 import com.trigyn.OTPUtil.dto.response.StatusDto;
 import lombok.extern.slf4j.Slf4j;
@@ -61,4 +65,3 @@ public class GlobalExceptionHandler {
                         .build());
     }
 }
-

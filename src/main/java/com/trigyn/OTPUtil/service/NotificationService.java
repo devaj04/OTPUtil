@@ -5,6 +5,8 @@ package com.trigyn.OTPUtil.service;
  * 
  * Note: Send methods do NOT throw exceptions on failure.
  * They return true if notification was successfully sent, false otherwise.
+ * 
+ * @author devaj04@gmail.com
  */
 public interface NotificationService {
 

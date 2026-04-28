@@ -7,6 +7,10 @@ import lombok.Data;
 /**
  * Request DTO for OTP verification.
  */
+
+/**
+ * @author devaj04@gmail.com
+ */
 @Data
 public class VerifyOtpRequest {
 

@@ -1,7 +1,10 @@
 package com.trigyn.OTPUtil.util;
 
-import org.apache.velocity.VelocityContext;
+/**
+ * @author devaj04@gmail.com
+ */
 
+import org.apache.velocity.VelocityContext;
 import java.util.Map;
 
 /**
@@ -26,4 +29,3 @@ public class ProjectUtil {
         return context;
     }
 }
-

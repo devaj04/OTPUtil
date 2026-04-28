@@ -1,5 +1,9 @@
 package com.trigyn.OTPUtil.dto;
 
+/**
+ * @author devaj04@gmail.com
+ */
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -40,4 +44,3 @@ public class OtpCacheEntry implements Serializable {
     /** Max allowed attempts */
     private int maxCount;
 }
-

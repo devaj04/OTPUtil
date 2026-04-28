@@ -13,7 +13,10 @@ import java.io.StringWriter;
 /**
  * Sends an HTML email using a pre-resolved Velocity template body
  * over an existing JavaMail {@link Transport} connection.
+ * 
+ * @author devaj04@gmail.com
  */
+
 @Slf4j
 @Component
 public class SendEmail {

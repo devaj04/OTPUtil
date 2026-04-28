@@ -7,6 +7,9 @@ import lombok.Data;
 /**
  * Outer envelope: { "request": { ... } }
  */
+/**
+ * @author devaj04@gmail.com
+ */
 @Data
 public class VerifyOtpRequestEnvelope {
 

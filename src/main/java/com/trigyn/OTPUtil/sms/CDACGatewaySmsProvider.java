@@ -39,6 +39,8 @@ import java.util.Map;
  * Every SMS template sent via this gateway must be pre-registered with your
  * telecom operator.  Map each OTP {@code purpose} to its DLT template-id in
  * {@code application.properties} under {@code cdac.sms.dlt-templates.<PURPOSE>}.
+ * 
+ * @author devaj04@gmail.com
  */
 @Slf4j
 @Component

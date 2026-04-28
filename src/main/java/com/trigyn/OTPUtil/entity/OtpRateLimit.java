@@ -11,6 +11,7 @@ import org.springframework.data.cassandra.core.mapping.Table;
 import java.time.Instant;
 
 /**
+ * @author devaj04@gmail.com
  * Cassandra entity for OTP rate limiting.
  * Tracks how many OTP generation requests were made per key within the current hour.
  *
@@ -45,4 +46,3 @@ public class OtpRateLimit {
     @Column("timestamp")
     private Instant timestamp;
 }
-

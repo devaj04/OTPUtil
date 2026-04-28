@@ -5,6 +5,10 @@ import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 /**
+ * @author devaj04@gmail.com
+ */
+
+/**
  * Request DTO for OTP generation.
  *
  * If purpose is null or empty, it defaults to signup OTP (configured via otp.default.purpose).
