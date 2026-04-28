@@ -54,6 +54,14 @@ CREATE TABLE IF NOT EXISTS sunbird.otp_transactions (
     lastmodifiedtime timestamp,
     PRIMARY KEY (key)
 );
+
+CREATE TABLE IF NOT EXISTS sunbird.otp_rate_limit (
+    key       text,
+    type      text,
+    timestamp timestamp,
+    count     int,
+    PRIMARY KEY (key)
+) WITH default_time_to_live = 3600;  -- Auto-expire after 1 hour
 ```
 
 ### 2 · Update `application.properties`
